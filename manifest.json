@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "dlpwaters.thesaurus",
+  "name": "Dictionary & Thesaurus",
+  "version": "1.0.0",
+  "author": "DLP Waters",
+  "description": "Find definitions, synonyms, and antonyms with key-free APIs",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Dictionary & Thesaurus",
+    "description": "Find definitions, synonyms, and antonyms with key-free APIs",
+    "category": "Reference",
+    "allowMultiple": false
+  }
+}

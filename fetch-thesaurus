@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+word=${1:-}
+[[ -n "$word" ]] || exit 2
+
+encoded_word=$(jq -rn --arg word "$word" '$word | @uri')
+dictionary=$(curl -sS --max-time 6 \
+  "https://api.dictionaryapi.dev/api/v2/entries/en/$encoded_word")
+
+synonyms=$(curl -fsS --max-time 6 --get \
+  --data-urlencode "rel_syn=$word" \
+  --data "max=10" \
+  https://api.datamuse.com/words)
+
+antonyms=$(curl -fsS --max-time 6 --get \
+  --data-urlencode "rel_ant=$word" \
+  --data "max=6" \
+  https://api.datamuse.com/words)
+
+jq -cn \
+  --argjson dictionary "$dictionary" \
+  --argjson synonyms "$synonyms" \
+  --argjson antonyms "$antonyms" \
+  '{dictionary: $dictionary, synonyms: $synonyms, antonyms: $antonyms}'
