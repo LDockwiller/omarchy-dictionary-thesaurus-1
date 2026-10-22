@@ -25,6 +25,8 @@ BarWidget {
   function togglePanel() { if (panelLoader.item) panelLoader.item.toggle() }
   function closeForPopoutSwitch() { if (panelLoader.item) panelLoader.item.closeForPopoutSwitch() }
   function search(word) { if (panelLoader.item) panelLoader.item.search(word || "") }
+  function searchIn(word, language) { if (panelLoader.item) panelLoader.item.searchIn(word || "", language || "en") }
+  function setLanguage(language) { if (panelLoader.item) panelLoader.item.setLanguage(language || "en") }
 
   implicitWidth: button.implicitWidth
   implicitHeight: button.implicitHeight
@@ -51,6 +53,8 @@ BarWidget {
     function hide(): void { root.close() }
     function toggle(): void { root.togglePanel() }
     function search(word: string): void { root.search(word) }
+    function searchIn(word: string, language: string): void { root.searchIn(word, language) }
+    function setLanguage(language: string): void { root.setLanguage(language) }
   }
 
   BarIconButton {

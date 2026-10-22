@@ -21,6 +21,7 @@ Panel {
   readonly property int panelMaxHeight: Style.space(650)
   readonly property string helperPath: Qt.resolvedUrl("fetch-thesaurus").toString().replace(/^file:\/\//, "")
 
+  property string language: "en"
   property string query: ""
   property string status: "idle"
   property string statusMessage: ""
@@ -28,6 +29,86 @@ Panel {
   property var synonyms: []
   property var antonyms: []
   property string copiedText: ""
+
+  readonly property var strings: ({
+    en: {
+      title: "Dictionary & Thesaurus",
+      subtitle: "DEFINITIONS · SYNONYMS · ANTONYMS",
+      searching: "SEARCHING…",
+      placeholder: "Enter a word…",
+      hint: "Type a word and press Enter. Click any result to explore that word.",
+      credits: "Powered by Free Dictionary API and Datamuse — no account or API key required.",
+      loading: "Finding words related to “%1”…",
+      empty: "No matches found for “%1”.",
+      failed: "Something went wrong.",
+      network: "Could not reach the word services. Check your connection and try again.",
+      noData: "The service returned no data.",
+      unexpected: "The service returned an unexpected response.",
+      unreadable: "The service returned unreadable data.",
+      copyAll: "Copy all",
+      copied: "Copied",
+      definitions: "DEFINITIONS",
+      synonyms: "SYNONYMS",
+      antonyms: "ANTONYMS",
+      noDefinitions: "No definition found.",
+      noSynonyms: "No direct synonyms found.",
+      noAntonyms: "No direct antonyms found.",
+      copyDefinitions: "Definitions of %1: ",
+      copySynonyms: "Synonyms for %1: ",
+      copyAntonyms: "Antonyms for %1: "
+    },
+    fr: {
+      title: "Dictionnaire & synonymes",
+      subtitle: "DÉFINITIONS · SYNONYMES · ANTONYMES",
+      searching: "RECHERCHE…",
+      placeholder: "Saisissez un mot…",
+      hint: "Tapez un mot et appuyez sur Entrée. Cliquez sur un résultat pour explorer ce mot.",
+      credits: "Données du Wiktionnaire — sans compte ni clé d’API.",
+      loading: "Recherche de mots liés à « %1 »…",
+      empty: "Aucun résultat pour « %1 ».",
+      failed: "Une erreur est survenue.",
+      network: "Impossible de joindre le Wiktionnaire. Vérifiez votre connexion et réessayez.",
+      noData: "Le service n’a renvoyé aucune donnée.",
+      unexpected: "Le service a renvoyé une réponse inattendue.",
+      unreadable: "Le service a renvoyé des données illisibles.",
+      copyAll: "Tout copier",
+      copied: "Copié",
+      definitions: "DÉFINITIONS",
+      synonyms: "SYNONYMES",
+      antonyms: "ANTONYMES",
+      noDefinitions: "Aucune définition trouvée.",
+      noSynonyms: "Aucun synonyme trouvé.",
+      noAntonyms: "Aucun antonyme trouvé.",
+      copyDefinitions: "Définitions de %1 : ",
+      copySynonyms: "Synonymes de %1 : ",
+      copyAntonyms: "Antonymes de %1 : "
+    }
+  })
+
+  function t(key) {
+    var table = root.strings[root.language] || root.strings.en
+    return table[key] !== undefined ? table[key] : root.strings.en[key]
+  }
+
+  function setLanguage(language) {
+    if (applyLanguage(language) && root.query !== "" && String(searchField.text || "").trim() === root.query)
+      runLookup()
+  }
+
+  // Switches the lookup language and remembers it in this widget's shell.json entry.
+  function applyLanguage(language) {
+    var next = language === "fr" ? "fr" : "en"
+    if (next === root.language) return false
+    root.language = next
+
+    var entry = { id: root.moduleName }
+    for (var key in root.settings) if (key !== "id") entry[key] = root.settings[key]
+    entry.language = next
+    root.settings = entry
+    if (root.bar && root.bar.shell && typeof root.bar.shell.updateEntryInline === "function")
+      root.bar.shell.updateEntryInline(root.moduleName, entry)
+    return true
+  }
 
   function open() {
     root.controller.show()
@@ -56,6 +137,11 @@ Panel {
       searchField.forceActiveFocus()
       if (searchField.text.length > 0) searchField.selectAll()
     })
+  }
+
+  function searchIn(word, language) {
+    applyLanguage(language)
+    search(word)
   }
 
   function search(word) {
@@ -90,7 +176,7 @@ Panel {
     root.synonyms = []
     root.antonyms = []
     root.copiedText = ""
-    lookupProc.command = [root.helperPath, q]
+    lookupProc.command = [root.helperPath, q, root.language]
     lookupProc.running = true
   }
 
@@ -103,14 +189,14 @@ Panel {
     if (root.definitions.length > 0) {
       var definitionText = []
       for (var i = 0; i < root.definitions.length; i++) definitionText.push(root.definitions[i].text)
-      pieces.push("Definitions of " + root.query + ": " + definitionText.join("; "))
+      pieces.push(t("copyDefinitions").arg(root.query) + definitionText.join("; "))
     }
-    if (root.synonyms.length > 0) pieces.push("Synonyms for " + root.query + ": " + root.synonyms.join(", "))
-    if (root.antonyms.length > 0) pieces.push("Antonyms for " + root.query + ": " + root.antonyms.join(", "))
+    if (root.synonyms.length > 0) pieces.push(t("copySynonyms").arg(root.query) + root.synonyms.join(", "))
+    if (root.antonyms.length > 0) pieces.push(t("copyAntonyms").arg(root.query) + root.antonyms.join(", "))
     var output = pieces.join("\n")
     if (output === "") return
     Quickshell.execDetached(["wl-copy", output])
-    root.copiedText = "Copied"
+    root.copiedText = t("copied")
     copiedTimer.restart()
   }
 
@@ -122,13 +208,13 @@ Panel {
       if (root.status !== "loading") return
       if (exitCode !== 0) {
         root.status = "error"
-        root.statusMessage = "Could not reach the word services. Check your connection and try again."
+        root.statusMessage = t("network")
         return
       }
       var result = Model.parse(lookupOutput.text)
       if (!result.ok) {
         root.status = "error"
-        root.statusMessage = result.error
+        root.statusMessage = t(result.error)
         return
       }
       root.definitions = result.definitions
@@ -145,6 +231,7 @@ Panel {
   }
 
   onOpenedChanged: if (opened) refreshFocus()
+  onSettingsChanged: root.language = root.setting("language", root.language) === "fr" ? "fr" : "en"
 
   KeyboardPanel {
     id: panel
@@ -187,13 +274,14 @@ Panel {
             id: heroLabels
             anchors.left: heroIcon.right
             anchors.leftMargin: Style.space(14)
-            anchors.right: parent.right
+            anchors.right: languageGroup.left
+            anchors.rightMargin: Style.space(10)
             anchors.verticalCenter: parent.verticalCenter
             spacing: Style.space(2)
 
             Text {
               width: parent.width
-              text: "Dictionary & Thesaurus"
+              text: root.t("title")
               color: root.contentForeground
               font.family: root.contentFontFamily
               font.pixelSize: Style.font.title
@@ -202,12 +290,29 @@ Panel {
 
             Text {
               width: parent.width
-              text: root.status === "loading" ? "SEARCHING…" : "DEFINITIONS · SYNONYMS · ANTONYMS"
+              text: root.status === "loading" ? root.t("searching") : root.t("subtitle")
               color: Qt.darker(root.contentForeground, 1.4)
               font.family: root.contentFontFamily
               font.pixelSize: Style.font.caption
               font.bold: true
               font.letterSpacing: 1.2
+            }
+          }
+
+          ButtonGroup {
+            id: languageGroup
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            spacing: Style.space(4)
+            focusable: false
+            options: ["EN", "FR"]
+            value: root.language.toUpperCase()
+            foreground: root.contentForeground
+            fontFamily: root.contentFontFamily
+            fontSize: Style.font.caption
+            onChanged: function(value) {
+              root.setLanguage(value.toLowerCase())
+              root.refreshFocus()
             }
           }
         }
@@ -248,7 +353,7 @@ Panel {
                 color: root.contentForeground
                 font.family: root.contentFontFamily
                 font.pixelSize: Style.font.body
-                placeholderText: "Enter a word…"
+                placeholderText: root.t("placeholder")
                 placeholderTextColor: Qt.darker(root.contentForeground, 2.0)
                 background: null
                 selectByMouse: true
@@ -305,7 +410,7 @@ Panel {
 
           Text {
             width: parent.width
-            text: "Type a word and press Enter. Click any result to explore that word."
+            text: root.t("hint")
             color: Qt.darker(root.contentForeground, 1.3)
             font.family: root.contentFontFamily
             font.pixelSize: Style.font.body
@@ -314,7 +419,7 @@ Panel {
 
           Text {
             width: parent.width
-            text: "Powered by Free Dictionary API and Datamuse — no account or API key required."
+            text: root.t("credits")
             color: Qt.darker(root.contentForeground, 1.7)
             font.family: root.contentFontFamily
             font.pixelSize: Style.font.caption
@@ -335,7 +440,7 @@ Panel {
           }
 
           Text {
-            text: "Finding words related to “" + root.query + "”…"
+            text: root.t("loading").arg(root.query)
             color: Qt.darker(root.contentForeground, 1.3)
             font.family: root.contentFontFamily
             font.pixelSize: Style.font.body
@@ -349,7 +454,7 @@ Panel {
 
           Text {
             width: parent.width
-            text: root.status === "empty" ? "No matches found for “" + root.query + "”." : "Something went wrong."
+            text: root.status === "empty" ? root.t("empty").arg(root.query) : root.t("failed")
             color: root.contentForeground
             font.family: root.contentFontFamily
             font.pixelSize: Style.font.body
@@ -388,7 +493,7 @@ Panel {
 
             Button {
               id: copyButton
-              text: root.copiedText === "" ? "Copy all" : root.copiedText
+              text: root.copiedText === "" ? root.t("copyAll") : root.copiedText
               foreground: root.contentForeground
               onClicked: root.copyResults()
             }
@@ -399,7 +504,7 @@ Panel {
             spacing: Style.space(7)
 
             Text {
-              text: "DEFINITIONS  " + root.definitions.length
+              text: root.t("definitions") + "  " + root.definitions.length
               color: Qt.darker(root.contentForeground, 1.35)
               font.family: root.contentFontFamily
               font.pixelSize: Style.font.caption
@@ -438,7 +543,7 @@ Panel {
 
             Text {
               visible: root.definitions.length === 0
-              text: "No definition found."
+              text: root.t("noDefinitions")
               color: Qt.darker(root.contentForeground, 1.5)
               font.family: root.contentFontFamily
               font.pixelSize: Style.font.body
@@ -452,7 +557,7 @@ Panel {
             spacing: Style.space(7)
 
             Text {
-              text: "SYNONYMS  " + root.synonyms.length
+              text: root.t("synonyms") + "  " + root.synonyms.length
               color: Qt.darker(root.contentForeground, 1.35)
               font.family: root.contentFontFamily
               font.pixelSize: Style.font.caption
@@ -477,7 +582,7 @@ Panel {
 
             Text {
               visible: root.synonyms.length === 0
-              text: "No direct synonyms found."
+              text: root.t("noSynonyms")
               color: Qt.darker(root.contentForeground, 1.5)
               font.family: root.contentFontFamily
               font.pixelSize: Style.font.body
@@ -491,7 +596,7 @@ Panel {
             spacing: Style.space(7)
 
             Text {
-              text: "ANTONYMS  " + root.antonyms.length
+              text: root.t("antonyms") + "  " + root.antonyms.length
               color: Qt.darker(root.contentForeground, 1.35)
               font.family: root.contentFontFamily
               font.pixelSize: Style.font.caption
@@ -516,7 +621,7 @@ Panel {
 
             Text {
               visible: root.antonyms.length === 0
-              text: "No direct antonyms found."
+              text: root.t("noAntonyms")
               color: Qt.darker(root.contentForeground, 1.5)
               font.family: root.contentFontFamily
               font.pixelSize: Style.font.body

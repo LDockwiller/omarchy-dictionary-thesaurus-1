@@ -2,7 +2,30 @@
 set -euo pipefail
 
 word=${1:-}
+language=${2:-en}
 [[ -n "$word" ]] || exit 2
+
+if [[ "$language" == "fr" ]]; then
+  # French entries come from the French Wiktionary; Model.js parses the wikitext.
+  wiktionary() {
+    curl -fsS --max-time 6 --get \
+      --user-agent "omarchy-dictionary-thesaurus (https://github.com/LDockwiller/omarchy-dictionary-thesaurus)" \
+      --data "action=parse&prop=wikitext&redirects=1&format=json&formatversion=2" \
+      --data-urlencode "page=$1" \
+      https://fr.wiktionary.org/w/api.php
+  }
+
+  # Prefer the lowercase page ("Maison" -> "maison"), falling back to the
+  # word as typed for entries that only exist capitalized.
+  lower_word=${word,,}
+  page=$(wiktionary "$lower_word")
+  if [[ "$lower_word" != "$word" ]] && jq -e '.error' <<<"$page" >/dev/null; then
+    page=$(wiktionary "$word")
+  fi
+
+  jq -c '{language: "fr", wikitext: (.parse.wikitext // "")}' <<<"$page"
+  exit 0
+fi
 
 encoded_word=$(jq -rn --arg word "$word" '$word | @uri')
 dictionary=$(curl -sS --max-time 6 \
@@ -22,4 +45,4 @@ jq -cn \
   --argjson dictionary "$dictionary" \
   --argjson synonyms "$synonyms" \
   --argjson antonyms "$antonyms" \
-  '{dictionary: $dictionary, synonyms: $synonyms, antonyms: $antonyms}'
+  '{language: "en", dictionary: $dictionary, synonyms: $synonyms, antonyms: $antonyms}'
