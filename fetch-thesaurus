@@ -9,7 +9,7 @@ if [[ "$language" == "fr" ]]; then
   # French entries come from the French Wiktionary; Model.js parses the wikitext.
   wiktionary() {
     curl -fsS --max-time 6 --get \
-      --user-agent "omarchy-dictionary-thesaurus (https://github.com/LDockwiller/omarchy-dictionary-thesaurus)" \
+      --user-agent "omarchy-dictionary-thesaurus (https://github.com/LDockwiller/omarchy-dictionary-thesaurus-1)" \
       --data "action=parse&prop=wikitext&redirects=1&format=json&formatversion=2" \
       --data-urlencode "page=$1" \
       https://fr.wiktionary.org/w/api.php

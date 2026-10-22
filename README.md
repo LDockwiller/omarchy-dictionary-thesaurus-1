@@ -21,7 +21,7 @@ with French support.
 ## Install
 
 ```bash
-omarchy plugin add https://github.com/LDockwiller/omarchy-dictionary-thesaurus.git
+omarchy plugin add https://github.com/LDockwiller/omarchy-dictionary-thesaurus-1.git
 omarchy plugin enable dlpwaters.thesaurus
 ```
 
