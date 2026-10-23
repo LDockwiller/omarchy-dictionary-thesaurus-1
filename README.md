@@ -16,7 +16,8 @@ with French support.
   - an example sentence for each sense
   - gender, number, transitivity, and verb group from the headword line
   - pronunciation (API) and etymology
-  - synonyms and antonyms
+  - synonyms and antonyms grouped by sense, with usage labels (familier,
+    argot, regional…) and the plain words listed first
 - Scrollable results panel
 - EN / FR switch in the panel; the interface follows the selected language and
   the last choice is remembered
