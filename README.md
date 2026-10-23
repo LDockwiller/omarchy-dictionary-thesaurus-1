@@ -10,8 +10,14 @@ with French support.
 
 - **English**: definitions and parts of speech from the Free Dictionary API,
   synonyms and antonyms from Datamuse
-- **French**: definitions, parts of speech, synonyms, and antonyms from the
-  French Wiktionary (fr.wiktionary.org)
+- **French**: complete entries from the French Wiktionary (fr.wiktionary.org):
+  - every sense of every part of speech, including sub-senses
+  - usage and domain labels (figuré, familier, cuisine, marine…)
+  - an example sentence for each sense
+  - gender, number, transitivity, and verb group from the headword line
+  - pronunciation (API) and etymology
+  - synonyms and antonyms
+- Scrollable results panel
 - EN / FR switch in the panel; the interface follows the selected language and
   the last choice is remembered
 - Clickable related words for quick follow-up searches

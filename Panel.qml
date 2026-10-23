@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Controls as Controls
 import QtQuick.Layouts
 import Quickshell
 import Quickshell.Io
@@ -18,14 +19,16 @@ Panel {
   readonly property color contentForeground: bar ? bar.foreground : Color.foreground
   readonly property string contentFontFamily: bar ? bar.fontFamily : Style.font.family
   readonly property int panelWidth: Style.space(420)
-  readonly property int panelMaxHeight: Style.space(650)
+  readonly property int panelMaxHeight: Style.space(760)
   readonly property string helperPath: Qt.resolvedUrl("fetch-thesaurus").toString().replace(/^file:\/\//, "")
 
   property string language: "en"
   property string query: ""
   property string status: "idle"
   property string statusMessage: ""
-  property var definitions: []
+  property var entries: []
+  property string pronunciation: ""
+  property string etymology: ""
   property var synonyms: []
   property var antonyms: []
   property string copiedText: ""
@@ -48,14 +51,12 @@ Panel {
       copyAll: "Copy all",
       copied: "Copied",
       definitions: "DEFINITIONS",
+      etymology: "ORIGIN",
       synonyms: "SYNONYMS",
       antonyms: "ANTONYMS",
       noDefinitions: "No definition found.",
       noSynonyms: "No direct synonyms found.",
-      noAntonyms: "No direct antonyms found.",
-      copyDefinitions: "Definitions of %1: ",
-      copySynonyms: "Synonyms for %1: ",
-      copyAntonyms: "Antonyms for %1: "
+      noAntonyms: "No direct antonyms found."
     },
     fr: {
       title: "Dictionnaire & synonymes",
@@ -74,14 +75,12 @@ Panel {
       copyAll: "Tout copier",
       copied: "Copié",
       definitions: "DÉFINITIONS",
+      etymology: "ÉTYMOLOGIE",
       synonyms: "SYNONYMES",
       antonyms: "ANTONYMES",
       noDefinitions: "Aucune définition trouvée.",
       noSynonyms: "Aucun synonyme trouvé.",
-      noAntonyms: "Aucun antonyme trouvé.",
-      copyDefinitions: "Définitions de %1 : ",
-      copySynonyms: "Synonymes de %1 : ",
-      copyAntonyms: "Antonymes de %1 : "
+      noAntonyms: "Aucun antonyme trouvé."
     }
   })
 
@@ -159,10 +158,17 @@ Panel {
     root.query = ""
     root.status = "idle"
     root.statusMessage = ""
-    root.definitions = []
+    root.resetResults()
+    root.copiedText = ""
+  }
+
+  function resetResults() {
+    root.entries = []
+    root.pronunciation = ""
+    root.etymology = ""
     root.synonyms = []
     root.antonyms = []
-    root.copiedText = ""
+    panelFlick.contentY = 0
   }
 
   function runLookup() {
@@ -172,9 +178,7 @@ Panel {
     root.query = q
     root.status = "loading"
     root.statusMessage = ""
-    root.definitions = []
-    root.synonyms = []
-    root.antonyms = []
+    root.resetResults()
     root.copiedText = ""
     lookupProc.command = [root.helperPath, q, root.language]
     lookupProc.running = true
@@ -185,16 +189,14 @@ Panel {
   }
 
   function copyResults() {
-    var pieces = []
-    if (root.definitions.length > 0) {
-      var definitionText = []
-      for (var i = 0; i < root.definitions.length; i++) definitionText.push(root.definitions[i].text)
-      pieces.push(t("copyDefinitions").arg(root.query) + definitionText.join("; "))
-    }
-    if (root.synonyms.length > 0) pieces.push(t("copySynonyms").arg(root.query) + root.synonyms.join(", "))
-    if (root.antonyms.length > 0) pieces.push(t("copyAntonyms").arg(root.query) + root.antonyms.join(", "))
-    var output = pieces.join("\n")
-    if (output === "") return
+    if (root.status !== "ok") return
+    var output = Model.plainText({
+      pronunciation: root.pronunciation,
+      etymology: root.etymology,
+      entries: root.entries,
+      synonyms: root.synonyms,
+      antonyms: root.antonyms
+    }, root.query, { etymology: t("etymology"), synonyms: t("synonyms"), antonyms: t("antonyms") })
     Quickshell.execDetached(["wl-copy", output])
     root.copiedText = t("copied")
     copiedTimer.restart()
@@ -217,10 +219,12 @@ Panel {
         root.statusMessage = t(result.error)
         return
       }
-      root.definitions = result.definitions
+      root.entries = result.entries
+      root.pronunciation = result.pronunciation
+      root.etymology = result.etymology
       root.synonyms = result.synonyms
       root.antonyms = result.antonyms
-      root.status = (root.definitions.length === 0 && root.synonyms.length === 0 && root.antonyms.length === 0) ? "empty" : "ok"
+      root.status = (root.entries.length === 0 && root.synonyms.length === 0 && root.antonyms.length === 0) ? "empty" : "ok"
     }
   }
 
@@ -251,302 +255,162 @@ Panel {
       onCloseRequested: root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
 
-      Column {
-        id: panelColumn
-        width: parent.width
-        spacing: Style.space(14)
-
-        Item {
-          width: parent.width
-          implicitHeight: Math.max(heroIcon.implicitHeight, heroLabels.implicitHeight)
-
-          Text {
-            id: heroIcon
-            text: "󰂺"
-            color: root.contentForeground
-            font.family: root.contentFontFamily
-            font.pixelSize: Style.font.display
-            anchors.left: parent.left
-            anchors.verticalCenter: parent.verticalCenter
-          }
-
-          Column {
-            id: heroLabels
-            anchors.left: heroIcon.right
-            anchors.leftMargin: Style.space(14)
-            anchors.right: languageGroup.left
-            anchors.rightMargin: Style.space(10)
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: Style.space(2)
-
-            Text {
-              width: parent.width
-              text: root.t("title")
-              color: root.contentForeground
-              font.family: root.contentFontFamily
-              font.pixelSize: Style.font.title
-              font.bold: true
-            }
-
-            Text {
-              width: parent.width
-              text: root.status === "loading" ? root.t("searching") : root.t("subtitle")
-              color: Qt.darker(root.contentForeground, 1.4)
-              font.family: root.contentFontFamily
-              font.pixelSize: Style.font.caption
-              font.bold: true
-              font.letterSpacing: 1.2
-            }
-          }
-
-          ButtonGroup {
-            id: languageGroup
-            anchors.right: parent.right
-            anchors.verticalCenter: parent.verticalCenter
-            spacing: Style.space(4)
-            focusable: false
-            options: ["EN", "FR"]
-            value: root.language.toUpperCase()
-            foreground: root.contentForeground
-            fontFamily: root.contentFontFamily
-            fontSize: Style.font.caption
-            onChanged: function(value) {
-              root.setLanguage(value.toLowerCase())
-              root.refreshFocus()
-            }
-          }
-        }
-
-        PanelSeparator { foreground: root.contentForeground }
-
-        Item {
-          width: parent.width
-          implicitHeight: Style.space(46)
-
-          Rectangle {
-            anchors.fill: parent
-            radius: Style.cornerRadius
-            color: "transparent"
-            border.width: Style.spacing.hairline
-            border.color: searchField.activeFocus ? Color.accent : Qt.darker(root.contentForeground, 1.7)
-
-            Row {
-              anchors.fill: parent
-              anchors.leftMargin: Style.space(12)
-              anchors.rightMargin: Style.space(6)
-              spacing: Style.space(8)
-
-              Text {
-                text: "󰍉"
-                color: Qt.darker(root.contentForeground, 1.3)
-                font.family: root.contentFontFamily
-                font.pixelSize: Style.font.title
-                anchors.verticalCenter: parent.verticalCenter
-                width: Style.space(22)
-                horizontalAlignment: Text.AlignHCenter
-              }
-
-              TextField {
-                id: searchField
-                width: parent.width - actions.width - Style.space(30)
-                height: parent.height
-                color: root.contentForeground
-                font.family: root.contentFontFamily
-                font.pixelSize: Style.font.body
-                placeholderText: root.t("placeholder")
-                placeholderTextColor: Qt.darker(root.contentForeground, 2.0)
-                background: null
-                selectByMouse: true
-                clip: true
-                onAccepted: root.runLookup()
-                onTextChanged: {
-                  if (String(text || "").trim() === "") root.clearResults()
-                  else if (root.status !== "loading" && String(text || "").trim() !== root.query) {
-                    root.status = "idle"
-                    root.definitions = []
-                    root.synonyms = []
-                    root.antonyms = []
-                  }
-                }
-                Keys.onEscapePressed: function(event) {
-                  if (searchField.text !== "") searchField.text = ""
-                  else root.close()
-                  event.accepted = true
-                }
-              }
-
-              Row {
-                id: actions
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: Style.space(4)
-
-                Button {
-                  visible: searchField.text !== ""
-                  text: "✕"
-                  foreground: root.contentForeground
-                  onClicked: {
-                    searchField.text = ""
-                    root.refreshFocus()
-                  }
-                }
-
-                Button {
-                  text: "→"
-                  foreground: root.contentForeground
-                  enabled: String(searchField.text || "").trim() !== "" && root.status !== "loading"
-                  onClicked: root.runLookup()
-                }
-              }
-            }
-          }
-        }
-
-        PanelSeparator { foreground: root.contentForeground }
+      Flickable {
+        id: panelFlick
+        anchors.fill: parent
+        contentWidth: width
+        contentHeight: panelColumn.implicitHeight
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+        flickableDirection: Flickable.VerticalFlick
+        interactive: contentHeight > height
+        Controls.ScrollBar.vertical: Controls.ScrollBar { policy: Controls.ScrollBar.AsNeeded }
 
         Column {
-          width: parent.width
-          visible: root.status === "idle"
-          spacing: Style.space(6)
-
-          Text {
-            width: parent.width
-            text: root.t("hint")
-            color: Qt.darker(root.contentForeground, 1.3)
-            font.family: root.contentFontFamily
-            font.pixelSize: Style.font.body
-            wrapMode: Text.WordWrap
-          }
-
-          Text {
-            width: parent.width
-            text: root.t("credits")
-            color: Qt.darker(root.contentForeground, 1.7)
-            font.family: root.contentFontFamily
-            font.pixelSize: Style.font.caption
-            wrapMode: Text.WordWrap
-          }
-        }
-
-        Row {
-          visible: root.status === "loading"
-          spacing: Style.space(10)
-
-          Text {
-            text: "󰍉"
-            color: Color.accent
-            font.family: root.contentFontFamily
-            font.pixelSize: Style.font.title
-            NumberAnimation on rotation { from: 0; to: 360; duration: 900; loops: Animation.Infinite; running: root.status === "loading" }
-          }
-
-          Text {
-            text: root.t("loading").arg(root.query)
-            color: Qt.darker(root.contentForeground, 1.3)
-            font.family: root.contentFontFamily
-            font.pixelSize: Style.font.body
-          }
-        }
-
-        Column {
-          width: parent.width
-          visible: root.status === "error" || root.status === "empty"
-          spacing: Style.space(4)
-
-          Text {
-            width: parent.width
-            text: root.status === "empty" ? root.t("empty").arg(root.query) : root.t("failed")
-            color: root.contentForeground
-            font.family: root.contentFontFamily
-            font.pixelSize: Style.font.body
-            font.bold: true
-            wrapMode: Text.WordWrap
-          }
-
-          Text {
-            width: parent.width
-            visible: root.statusMessage !== ""
-            text: root.statusMessage
-            color: Qt.darker(root.contentForeground, 1.4)
-            font.family: root.contentFontFamily
-            font.pixelSize: Style.font.caption
-            wrapMode: Text.WordWrap
-          }
-        }
-
-        Column {
-          width: parent.width
-          visible: root.status === "ok"
+          id: panelColumn
+          width: panelFlick.width - (panelFlick.contentHeight > panelFlick.height ? Style.space(10) : 0)
           spacing: Style.space(14)
 
-          Row {
+          Item {
             width: parent.width
+            implicitHeight: Math.max(heroIcon.implicitHeight, heroLabels.implicitHeight)
 
             Text {
-              width: parent.width - copyButton.width
-              text: root.query
+              id: heroIcon
+              text: "󰂺"
               color: root.contentForeground
               font.family: root.contentFontFamily
               font.pixelSize: Style.font.display
-              font.bold: true
-              elide: Text.ElideRight
+              anchors.left: parent.left
+              anchors.verticalCenter: parent.verticalCenter
             }
 
-            Button {
-              id: copyButton
-              text: root.copiedText === "" ? root.t("copyAll") : root.copiedText
+            Column {
+              id: heroLabels
+              anchors.left: heroIcon.right
+              anchors.leftMargin: Style.space(14)
+              anchors.right: languageGroup.left
+              anchors.rightMargin: Style.space(10)
+              anchors.verticalCenter: parent.verticalCenter
+              spacing: Style.space(2)
+
+              Text {
+                width: parent.width
+                text: root.t("title")
+                color: root.contentForeground
+                font.family: root.contentFontFamily
+                font.pixelSize: Style.font.title
+                font.bold: true
+              }
+
+              Text {
+                width: parent.width
+                text: root.status === "loading" ? root.t("searching") : root.t("subtitle")
+                color: Qt.darker(root.contentForeground, 1.4)
+                font.family: root.contentFontFamily
+                font.pixelSize: Style.font.caption
+                font.bold: true
+                font.letterSpacing: 1.2
+              }
+            }
+
+            ButtonGroup {
+              id: languageGroup
+              anchors.right: parent.right
+              anchors.verticalCenter: parent.verticalCenter
+              spacing: Style.space(4)
+              focusable: false
+              options: ["EN", "FR"]
+              value: root.language.toUpperCase()
               foreground: root.contentForeground
-              onClicked: root.copyResults()
+              fontFamily: root.contentFontFamily
+              fontSize: Style.font.caption
+              onChanged: function(value) {
+                root.setLanguage(value.toLowerCase())
+                root.refreshFocus()
+              }
             }
           }
 
-          Column {
+          PanelSeparator { foreground: root.contentForeground }
+
+          Item {
             width: parent.width
-            spacing: Style.space(7)
+            implicitHeight: Style.space(46)
 
-            Text {
-              text: root.t("definitions") + "  " + root.definitions.length
-              color: Qt.darker(root.contentForeground, 1.35)
-              font.family: root.contentFontFamily
-              font.pixelSize: Style.font.caption
-              font.bold: true
-              font.letterSpacing: 1.0
-            }
-
-            Repeater {
-              model: root.definitions
+            Rectangle {
+              anchors.fill: parent
+              radius: Style.cornerRadius
+              color: "transparent"
+              border.width: Style.spacing.hairline
+              border.color: searchField.activeFocus ? Color.accent : Qt.darker(root.contentForeground, 1.7)
 
               Row {
-                required property var modelData
-                required property int index
-                width: parent.width
+                anchors.fill: parent
+                anchors.leftMargin: Style.space(12)
+                anchors.rightMargin: Style.space(6)
                 spacing: Style.space(8)
 
                 Text {
-                  width: Style.space(22)
-                  text: (index + 1) + "."
-                  color: Color.accent
+                  text: "󰍉"
+                  color: Qt.darker(root.contentForeground, 1.3)
                   font.family: root.contentFontFamily
-                  font.pixelSize: Style.font.body
-                  font.bold: true
+                  font.pixelSize: Style.font.title
+                  anchors.verticalCenter: parent.verticalCenter
+                  width: Style.space(22)
+                  horizontalAlignment: Text.AlignHCenter
                 }
 
-                Text {
-                  width: parent.width - Style.space(30)
-                  text: (modelData.part === "" ? "" : modelData.part + " · ") + modelData.text
+                TextField {
+                  id: searchField
+                  width: parent.width - actions.width - Style.space(30)
+                  height: parent.height
                   color: root.contentForeground
                   font.family: root.contentFontFamily
                   font.pixelSize: Style.font.body
-                  wrapMode: Text.WordWrap
+                  placeholderText: root.t("placeholder")
+                  placeholderTextColor: Qt.darker(root.contentForeground, 2.0)
+                  background: null
+                  selectByMouse: true
+                  clip: true
+                  onAccepted: root.runLookup()
+                  onTextChanged: {
+                    if (String(text || "").trim() === "") root.clearResults()
+                    else if (root.status !== "loading" && String(text || "").trim() !== root.query) {
+                      root.status = "idle"
+                      root.resetResults()
+                    }
+                  }
+                  Keys.onEscapePressed: function(event) {
+                    if (searchField.text !== "") searchField.text = ""
+                    else root.close()
+                    event.accepted = true
+                  }
+                }
+
+                Row {
+                  id: actions
+                  anchors.verticalCenter: parent.verticalCenter
+                  spacing: Style.space(4)
+
+                  Button {
+                    visible: searchField.text !== ""
+                    text: "✕"
+                    foreground: root.contentForeground
+                    onClicked: {
+                      searchField.text = ""
+                      root.refreshFocus()
+                    }
+                  }
+
+                  Button {
+                    text: "→"
+                    foreground: root.contentForeground
+                    enabled: String(searchField.text || "").trim() !== "" && root.status !== "loading"
+                    onClicked: root.runLookup()
+                  }
                 }
               }
-            }
-
-            Text {
-              visible: root.definitions.length === 0
-              text: root.t("noDefinitions")
-              color: Qt.darker(root.contentForeground, 1.5)
-              font.family: root.contentFontFamily
-              font.pixelSize: Style.font.body
             }
           }
 
@@ -554,77 +418,318 @@ Panel {
 
           Column {
             width: parent.width
-            spacing: Style.space(7)
+            visible: root.status === "idle"
+            spacing: Style.space(6)
 
             Text {
-              text: root.t("synonyms") + "  " + root.synonyms.length
-              color: Qt.darker(root.contentForeground, 1.35)
+              width: parent.width
+              text: root.t("hint")
+              color: Qt.darker(root.contentForeground, 1.3)
+              font.family: root.contentFontFamily
+              font.pixelSize: Style.font.body
+              wrapMode: Text.WordWrap
+            }
+
+            Text {
+              width: parent.width
+              text: root.t("credits")
+              color: Qt.darker(root.contentForeground, 1.7)
               font.family: root.contentFontFamily
               font.pixelSize: Style.font.caption
-              font.bold: true
-              font.letterSpacing: 1.0
+              wrapMode: Text.WordWrap
             }
+          }
 
-            Flow {
-              width: parent.width
-              spacing: Style.space(6)
+          Row {
+            visible: root.status === "loading"
+            spacing: Style.space(10)
 
-              Repeater {
-                model: root.synonyms
-                Button {
-                  required property string modelData
-                  text: modelData
-                  foreground: root.contentForeground
-                  onClicked: root.useResult(modelData)
-                }
-              }
+            Text {
+              text: "󰍉"
+              color: Color.accent
+              font.family: root.contentFontFamily
+              font.pixelSize: Style.font.title
+              NumberAnimation on rotation { from: 0; to: 360; duration: 900; loops: Animation.Infinite; running: root.status === "loading" }
             }
 
             Text {
-              visible: root.synonyms.length === 0
-              text: root.t("noSynonyms")
-              color: Qt.darker(root.contentForeground, 1.5)
+              text: root.t("loading").arg(root.query)
+              color: Qt.darker(root.contentForeground, 1.3)
               font.family: root.contentFontFamily
               font.pixelSize: Style.font.body
             }
           }
 
-          PanelSeparator { foreground: root.contentForeground }
+          Column {
+            width: parent.width
+            visible: root.status === "error" || root.status === "empty"
+            spacing: Style.space(4)
+
+            Text {
+              width: parent.width
+              text: root.status === "empty" ? root.t("empty").arg(root.query) : root.t("failed")
+              color: root.contentForeground
+              font.family: root.contentFontFamily
+              font.pixelSize: Style.font.body
+              font.bold: true
+              wrapMode: Text.WordWrap
+            }
+
+            Text {
+              width: parent.width
+              visible: root.statusMessage !== ""
+              text: root.statusMessage
+              color: Qt.darker(root.contentForeground, 1.4)
+              font.family: root.contentFontFamily
+              font.pixelSize: Style.font.caption
+              wrapMode: Text.WordWrap
+            }
+          }
 
           Column {
             width: parent.width
-            spacing: Style.space(7)
+            visible: root.status === "ok"
+            spacing: Style.space(14)
 
-            Text {
-              text: root.t("antonyms") + "  " + root.antonyms.length
-              color: Qt.darker(root.contentForeground, 1.35)
-              font.family: root.contentFontFamily
-              font.pixelSize: Style.font.caption
-              font.bold: true
-              font.letterSpacing: 1.0
-            }
-
-            Flow {
+            Row {
               width: parent.width
-              spacing: Style.space(6)
 
-              Repeater {
-                model: root.antonyms
-                Button {
-                  required property string modelData
-                  text: modelData
-                  foreground: root.contentForeground
-                  onClicked: root.useResult(modelData)
+              Column {
+                width: parent.width - copyButton.width
+                spacing: Style.space(2)
+
+                Text {
+                  width: parent.width
+                  text: root.query
+                  color: root.contentForeground
+                  font.family: root.contentFontFamily
+                  font.pixelSize: Style.font.display
+                  font.bold: true
+                  elide: Text.ElideRight
                 }
+
+                Text {
+                  width: parent.width
+                  visible: root.pronunciation !== ""
+                  text: root.language === "fr" ? "\\" + root.pronunciation + "\\" : "/" + root.pronunciation + "/"
+                  color: Qt.darker(root.contentForeground, 1.35)
+                  font.family: root.contentFontFamily
+                  font.pixelSize: Style.font.body
+                  elide: Text.ElideRight
+                }
+              }
+
+              Button {
+                id: copyButton
+                text: root.copiedText === "" ? root.t("copyAll") : root.copiedText
+                foreground: root.contentForeground
+                onClicked: root.copyResults()
               }
             }
 
-            Text {
-              visible: root.antonyms.length === 0
-              text: root.t("noAntonyms")
-              color: Qt.darker(root.contentForeground, 1.5)
-              font.family: root.contentFontFamily
-              font.pixelSize: Style.font.body
+            Column {
+              width: parent.width
+              spacing: Style.space(7)
+
+              Text {
+                text: root.t("definitions") + "  " + Model.senseCount(root.entries)
+                color: Qt.darker(root.contentForeground, 1.35)
+                font.family: root.contentFontFamily
+                font.pixelSize: Style.font.caption
+                font.bold: true
+                font.letterSpacing: 1.0
+              }
+
+              // One block per part of speech: heading, grammatical details,
+              // then numbered senses with sub-senses and an example each.
+              Repeater {
+                model: root.entries
+
+                Column {
+                  id: entryBlock
+                  required property var modelData
+                  required property int index
+                  width: parent.width
+                  spacing: Style.space(6)
+                  topPadding: index === 0 ? 0 : Style.space(8)
+
+                  Text {
+                    width: parent.width
+                    text: entryBlock.modelData.part
+                      + (entryBlock.modelData.info !== "" ? "  ·  " + entryBlock.modelData.info : "")
+                      + (entryBlock.modelData.pronunciation !== "" && entryBlock.modelData.pronunciation !== root.pronunciation
+                         ? "  ·  \\" + entryBlock.modelData.pronunciation + "\\" : "")
+                    color: Color.accent
+                    font.family: root.contentFontFamily
+                    font.pixelSize: Style.font.body
+                    font.bold: true
+                    wrapMode: Text.WordWrap
+                  }
+
+                  Repeater {
+                    model: entryBlock.modelData.senses
+
+                    Row {
+                      id: senseRow
+                      required property var modelData
+                      readonly property int indent: (modelData.level - 1) * Style.space(22)
+                      width: parent.width
+                      spacing: Style.space(8)
+
+                      Item { width: senseRow.indent; height: 1 }
+
+                      Text {
+                        width: Style.space(24)
+                        text: senseRow.modelData.label
+                        color: senseRow.modelData.level === 1 ? Color.accent : Qt.darker(root.contentForeground, 1.3)
+                        font.family: root.contentFontFamily
+                        font.pixelSize: Style.font.body
+                        font.bold: senseRow.modelData.level === 1
+                      }
+
+                      Column {
+                        width: senseRow.width - senseRow.indent - Style.space(24) - senseRow.spacing * 2
+                        spacing: Style.space(3)
+
+                        Text {
+                          width: parent.width
+                          text: senseRow.modelData.text
+                          color: root.contentForeground
+                          font.family: root.contentFontFamily
+                          font.pixelSize: Style.font.body
+                          wrapMode: Text.WordWrap
+                        }
+
+                        Text {
+                          width: parent.width
+                          visible: senseRow.modelData.example !== ""
+                          text: root.language === "fr" ? "« " + senseRow.modelData.example + " »" : "“" + senseRow.modelData.example + "”"
+                          color: Qt.darker(root.contentForeground, 1.45)
+                          font.family: root.contentFontFamily
+                          font.pixelSize: Style.font.caption
+                          font.italic: true
+                          wrapMode: Text.WordWrap
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+
+              Text {
+                visible: root.entries.length === 0
+                text: root.t("noDefinitions")
+                color: Qt.darker(root.contentForeground, 1.5)
+                font.family: root.contentFontFamily
+                font.pixelSize: Style.font.body
+              }
+            }
+
+            PanelSeparator {
+              visible: root.etymology !== ""
+              foreground: root.contentForeground
+            }
+
+            Column {
+              width: parent.width
+              visible: root.etymology !== ""
+              spacing: Style.space(7)
+
+              Text {
+                text: root.t("etymology")
+                color: Qt.darker(root.contentForeground, 1.35)
+                font.family: root.contentFontFamily
+                font.pixelSize: Style.font.caption
+                font.bold: true
+                font.letterSpacing: 1.0
+              }
+
+              Text {
+                width: parent.width
+                text: root.etymology
+                color: Qt.darker(root.contentForeground, 1.15)
+                font.family: root.contentFontFamily
+                font.pixelSize: Style.font.caption
+                wrapMode: Text.WordWrap
+              }
+            }
+
+            PanelSeparator { foreground: root.contentForeground }
+
+            Column {
+              width: parent.width
+              spacing: Style.space(7)
+
+              Text {
+                text: root.t("synonyms") + "  " + root.synonyms.length
+                color: Qt.darker(root.contentForeground, 1.35)
+                font.family: root.contentFontFamily
+                font.pixelSize: Style.font.caption
+                font.bold: true
+                font.letterSpacing: 1.0
+              }
+
+              Flow {
+                width: parent.width
+                spacing: Style.space(6)
+
+                Repeater {
+                  model: root.synonyms
+                  Button {
+                    required property string modelData
+                    text: modelData
+                    foreground: root.contentForeground
+                    onClicked: root.useResult(modelData)
+                  }
+                }
+              }
+
+              Text {
+                visible: root.synonyms.length === 0
+                text: root.t("noSynonyms")
+                color: Qt.darker(root.contentForeground, 1.5)
+                font.family: root.contentFontFamily
+                font.pixelSize: Style.font.body
+              }
+            }
+
+            PanelSeparator { foreground: root.contentForeground }
+
+            Column {
+              width: parent.width
+              spacing: Style.space(7)
+
+              Text {
+                text: root.t("antonyms") + "  " + root.antonyms.length
+                color: Qt.darker(root.contentForeground, 1.35)
+                font.family: root.contentFontFamily
+                font.pixelSize: Style.font.caption
+                font.bold: true
+                font.letterSpacing: 1.0
+              }
+
+              Flow {
+                width: parent.width
+                spacing: Style.space(6)
+
+                Repeater {
+                  model: root.antonyms
+                  Button {
+                    required property string modelData
+                    text: modelData
+                    foreground: root.contentForeground
+                    onClicked: root.useResult(modelData)
+                  }
+                }
+              }
+
+              Text {
+                visible: root.antonyms.length === 0
+                text: root.t("noAntonyms")
+                color: Qt.darker(root.contentForeground, 1.5)
+                font.family: root.contentFontFamily
+                font.pixelSize: Style.font.body
+              }
             }
           }
         }

@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "dlpwaters.thesaurus",
   "name": "Dictionary & Thesaurus",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "author": "DLP Waters",
   "description": "Find English and French definitions, synonyms, and antonyms with key-free APIs",
   "kinds": [
