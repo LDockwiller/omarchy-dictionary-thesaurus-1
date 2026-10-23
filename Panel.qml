@@ -661,7 +661,7 @@ Panel {
               spacing: Style.space(7)
 
               Text {
-                text: root.t("synonyms") + "  " + root.synonyms.length
+                text: root.t("synonyms") + "  " + Model.wordCount(root.synonyms)
                 color: Qt.darker(root.contentForeground, 1.35)
                 font.family: root.contentFontFamily
                 font.pixelSize: Style.font.caption
@@ -669,19 +669,12 @@ Panel {
                 font.letterSpacing: 1.0
               }
 
-              Flow {
+              RelationList {
                 width: parent.width
-                spacing: Style.space(6)
-
-                Repeater {
-                  model: root.synonyms
-                  Button {
-                    required property string modelData
-                    text: modelData
-                    foreground: root.contentForeground
-                    onClicked: root.useResult(modelData)
-                  }
-                }
+                groups: root.synonyms
+                foreground: root.contentForeground
+                fontFamily: root.contentFontFamily
+                onPicked: function(word) { root.useResult(word) }
               }
 
               Text {
@@ -700,7 +693,7 @@ Panel {
               spacing: Style.space(7)
 
               Text {
-                text: root.t("antonyms") + "  " + root.antonyms.length
+                text: root.t("antonyms") + "  " + Model.wordCount(root.antonyms)
                 color: Qt.darker(root.contentForeground, 1.35)
                 font.family: root.contentFontFamily
                 font.pixelSize: Style.font.caption
@@ -708,19 +701,12 @@ Panel {
                 font.letterSpacing: 1.0
               }
 
-              Flow {
+              RelationList {
                 width: parent.width
-                spacing: Style.space(6)
-
-                Repeater {
-                  model: root.antonyms
-                  Button {
-                    required property string modelData
-                    text: modelData
-                    foreground: root.contentForeground
-                    onClicked: root.useResult(modelData)
-                  }
-                }
+                groups: root.antonyms
+                foreground: root.contentForeground
+                fontFamily: root.contentFontFamily
+                onPicked: function(word) { root.useResult(word) }
               }
 
               Text {

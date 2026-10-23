@@ -2,15 +2,16 @@
 
 var MAX_EN_SENSES = 3
 var MAX_FR_SENSES = 25
-var MAX_SYNONYMS = 20
+var MAX_SYNONYMS = 30
 var MAX_ANTONYMS = 10
 var MAX_EXAMPLE_LENGTH = 240
 
 // Errors are returned as keys so the panel can show them in the active language.
 //
 // A successful result looks like:
-//   { ok, pronunciation, etymology, synonyms, antonyms,
-//     entries: [{ part, info, pronunciation, senses: [{ label, level, text, example }] }] }
+//   { ok, pronunciation, etymology,
+//     entries: [{ part, info, pronunciation, senses: [{ label, level, text, example }] }],
+//     synonyms / antonyms: [{ sense, words: [{ word, note }] }] }
 function parse(raw) {
   var text = String(raw || "").trim()
   if (text === "") return { ok: false, error: "noData" }
@@ -30,8 +31,8 @@ function parse(raw) {
       pronunciation: english.pronunciation,
       etymology: english.etymology,
       entries: english.entries,
-      synonyms: words(payload.synonyms).slice(0, MAX_SYNONYMS),
-      antonyms: words(payload.antonyms).slice(0, MAX_ANTONYMS)
+      synonyms: flatGroup(words(payload.synonyms).slice(0, MAX_SYNONYMS)),
+      antonyms: flatGroup(words(payload.antonyms).slice(0, MAX_ANTONYMS))
     }
   } catch (error) {
     return { ok: false, error: "unreadable" }
@@ -59,9 +60,29 @@ function plainText(result, query, labels) {
     }
   }
   if (result.etymology) lines.push("", labels.etymology + " : " + result.etymology)
-  if (result.synonyms.length > 0) lines.push("", labels.synonyms + " : " + result.synonyms.join(", "))
-  if (result.antonyms.length > 0) lines.push(labels.antonyms + " : " + result.antonyms.join(", "))
+  relationText(lines, labels.synonyms, result.synonyms)
+  relationText(lines, labels.antonyms, result.antonyms)
   return lines.join("\n")
+}
+
+function relationText(lines, label, groups) {
+  if (wordCount(groups) === 0) return
+  lines.push("", label)
+  for (var i = 0; i < groups.length; i++) {
+    var items = groups[i].words.map(function(item) { return item.word + (item.note ? " (" + item.note + ")" : "") })
+    lines.push((groups[i].sense ? groups[i].sense + " : " : "") + items.join(", "))
+  }
+}
+
+function wordCount(groups) {
+  var count = 0
+  for (var i = 0; i < groups.length; i++) count += groups[i].words.length
+  return count
+}
+
+function flatGroup(list) {
+  if (list.length === 0) return []
+  return [{ sense: "", words: list.map(function(word) { return { word: word, note: "" } }) }]
 }
 
 // English stays deliberately light: a few senses per part of speech.
@@ -159,7 +180,10 @@ var HEADWORD_INFO = {
 // Reads the French section of a fr.wiktionary.org page: every sense of every
 // part of speech (with sub-senses and a first example), the grammatical
 // information from the headword line, the pronunciation, the etymology, and
-// the words listed under `{{S|synonymes}}` / `{{S|antonymes}}`.
+// the words listed under `{{S|synonymes}}` / `{{S|antonymes}}`, grouped by the
+// sense they apply to and tagged with their usage label (familier, argot…).
+// Quasi-synonyms are left out on purpose: they are related words, not
+// substitutes.
 function wiktionary(wikitext) {
   var lines = joinTemplateLines(String(wikitext || "").split("\n"))
   var inFrench = false
@@ -169,8 +193,9 @@ function wiktionary(wikitext) {
   var entries = []
   var etymology = []
   var pronunciation = ""
-  var synonymRows = []
-  var antonymRows = []
+  var synonymGroups = []
+  var antonymGroups = []
+  var relationSense = ""
   var counters = [0, 0, 0]
 
   for (var i = 0; i < lines.length; i++) {
@@ -191,6 +216,7 @@ function wiktionary(wikitext) {
       section = params[0].trim()
       if (heading[1].length === 3) entry = null
       lastSense = null
+      relationSense = ""
       if (!NON_DEFINITION_SECTIONS[section] && heading[1].length === 3) {
         entry = { part: partName(section, params), info: "", pronunciation: "", senses: [] }
         entries.push(entry)
@@ -212,14 +238,13 @@ function wiktionary(wikitext) {
       continue
     }
 
-    if (section === "synonymes" || section === "quasi-synonymes" || section === "antonymes") {
-      if (!/^\*/.test(line)) continue
-      var link = line.match(/\[\[([^\]|#]+)|\{\{(?:lien|l)\|([^|}]+)/)
-      if (!link) continue
-      var word = (link[1] || link[2]).trim()
-      if (!/[A-Za-zÀ-ÿœŒ]/.test(word) || /^(Annexe|Thésaurus|Wiktionnaire):/.test(word)) continue
-      var rows = section === "antonymes" ? antonymRows : synonymRows
-      rows.push({ word: word })
+    if (section === "synonymes" || section === "antonymes") {
+      var title = relationTitle(line)
+      if (title !== null) {
+        relationSense = title
+        continue
+      }
+      if (/^\*/.test(line)) readRelationLine(line, relationSense, section === "antonymes" ? antonymGroups : synonymGroups)
       continue
     }
 
@@ -269,9 +294,78 @@ function wiktionary(wikitext) {
     pronunciation: pronunciation,
     etymology: etymology.join(" "),
     entries: entries,
-    synonyms: words(synonymRows).slice(0, MAX_SYNONYMS),
-    antonyms: words(antonymRows).slice(0, MAX_ANTONYMS)
+    synonyms: finishGroups(synonymGroups, MAX_SYNONYMS),
+    antonyms: finishGroups(antonymGroups, MAX_ANTONYMS)
   }
+}
+
+// Sense headings inside a synonym list: `; ''Prendre un repas (2)''` or the
+// title of a `{{(|Bâtiment d’habitation|1}}` box. Returns null for other lines.
+function relationTitle(line) {
+  var box = line.match(/^\{\{\(\s*(?:\|([^|}]*))?/)
+  var heading = line.match(/^;\s*(.*)$/)
+  if (!box && !heading) return null
+  var text = box ? String(box[1] || "") : heading[1]
+  if (/^\s*(?:colonnes|titre)\s*=/.test(text)) text = text.replace(/^\s*titre\s*=/, "")
+  if (/^\s*colonnes\s*=/.test(text)) text = ""
+  text = cleanWikitext(text).replace(/\s*:\s*$/, "")
+  return text.replace(/\((\d+(?:[.,]\d+)*)\)/g, "(sens $1)").trim()
+}
+
+// Usage labels shown next to a related word; anything else (often a region
+// such as {{France}} or {{Québec}}) is shown as written.
+var NOTE_NAMES = {
+  "familier": "familier", "fam": "familier", "très familier": "très familier",
+  "populaire": "populaire", "argot": "argot", "vulgaire": "vulgaire",
+  "littéraire": "littéraire", "soutenu": "soutenu", "vieilli": "vieilli",
+  "vieux": "vieux", "désuet": "désuet", "rare": "rare", "péjoratif": "péjoratif",
+  "figuré": "figuré", "plaisanterie": "par plaisanterie", "enfantin": "enfantin",
+  "néologisme": "néologisme", "archaïsme": "archaïsme", "régionalisme": "régional",
+  "anglicisme": "anglicisme", "ironique": "ironique", "injurieux": "injurieux"
+}
+var IGNORED_NOTES = { "lien": true, "l": true, "réf": true, "R": true, "nobr": true }
+
+// A line can list several words: `* [[appartement]], [[appart]]`.
+function readRelationLine(line, sense, groups) {
+  var group = null
+  for (var g = 0; g < groups.length; g++) if (groups[g].sense === sense) group = groups[g]
+  if (!group) {
+    group = { sense: sense, words: [] }
+    groups.push(group)
+  }
+
+  var pieces = line.replace(/^\*+\s*/, "").split(/,(?![^\[{]*[\]}])/)
+  for (var i = 0; i < pieces.length; i++) {
+    var link = pieces[i].match(/\[\[([^\]|#]+)|\{\{(?:lien|l)\|([^|}]+)/)
+    if (!link) continue
+    var word = (link[1] || link[2]).trim()
+    if (!/[A-Za-zÀ-ÿœŒ]/.test(word) || /:/.test(word)) continue
+
+    var notes = []
+    var templates = pieces[i].match(/\{\{[^{}]*\}\}/g) || []
+    for (var t = 0; t < templates.length; t++) {
+      var name = templates[t].slice(2, -2).split("|")[0].trim()
+      if (IGNORED_NOTES[name] || name === "") continue
+      notes.push(NOTE_NAMES[name.toLowerCase()] || name)
+    }
+    var exists = group.words.some(function(item) { return item.word.toLowerCase() === word.toLowerCase() })
+    if (!exists) group.words.push({ word: word, note: notes.join(", ") })
+  }
+}
+
+// Plain words first in each group, then labelled ones; caps the total count.
+function finishGroups(groups, max) {
+  var total = 0
+  var result = []
+  for (var i = 0; i < groups.length && total < max; i++) {
+    var plain = groups[i].words.filter(function(item) { return item.note === "" })
+    var marked = groups[i].words.filter(function(item) { return item.note !== "" })
+    var list = plain.concat(marked).slice(0, max - total)
+    if (list.length === 0) continue
+    total += list.length
+    result.push({ sense: groups[i].sense, words: list })
+  }
+  return result
 }
 
 // Multi-line templates such as `{{exemple | lang=fr\n | …}}` are folded onto
